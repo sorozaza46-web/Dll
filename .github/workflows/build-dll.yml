@@ -1,0 +1,42 @@
+name: SonOyuncu Otopilot DLL Derleme Sistemi
+
+on:
+  push:
+    branches: [ "main" ] # Kod 'main' branch'ine pushlandığında otomatik çalışır
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch: # GitHub web sitesinden elle de tetikleyebilmen için
+
+jobs:
+  build:
+    runs-on: windows-latest # C++ ve MSBuild için Windows sunucusu kullanıyoruz
+
+    steps:
+    - name: Kodu GitHub'dan Çek
+      uses: actions/checkout@v4
+
+    - name: Java JDK 17 Kurulumu (jni.h ve jvmti.h için)
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: MSBuild Aracını Kur (Visual Studio Derleyicisi)
+      uses: actions/setup-msbuild@v2
+
+    - name: Bağımlılıkları Çöz ve x64 Release Olarak Derle
+      run: |
+        # Java JDK dizinini ortam değişkenlerinden alıp C++ derleyicisine iletiyoruz
+        $env:JAVA_INCLUDE = "${{ env.JAVA_HOME }}\include"
+        $env:JAVA_INCLUDE_WIN = "${{ env.JAVA_HOME }}\include\win32"
+        
+        # Projeyi x64 mimarisinde ve Release modunda derle
+        msbuild.exe SonOyuncuSolver.vcxproj /p:Configuration=Release /p:Platform=x64
+
+    - name: Derlenen DLL Dosyasını Artifact Olarak Kaydet
+      uses: actions/upload-artifact@v4
+      with:
+        name: SonOyuncu-Otopilot-Solver-DLL
+        path: |
+          x64/Release/*.dll
+          
