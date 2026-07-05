@@ -22,7 +22,7 @@ jobs:
         distribution: 'temurin'
 
     - name: MSBuild Aracını Kur (Visual Studio Derleyicisi)
-      uses: actions/setup-msbuild@v2
+      uses: microsoft/setup-msbuild@v2 # HATALI KISIM DÜZELTİLDİ: actions yerine microsoft yapıldı
 
     - name: Bağımlılıkları Çöz ve x64 Release Olarak Derle
       run: |
