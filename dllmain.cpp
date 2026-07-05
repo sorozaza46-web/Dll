@@ -1,32 +1,63 @@
 #include <windows.h>
 #include <iostream>
+#include <fstream>
 #include <string>
+#include <shlobj.h> // Masaüstü yolunu otomatik bulmak için gerekli
 #include <jvmti.h>
 #include <jni.h>
 #include "deobfuscator.h"
 #include "pattern_scanner.h"
 
-// Konsol metinlerini renklendirmek için yardımcı fonksiyon
+std::string g_LogFilePath = "";
+
+// Kullanıcının Masaüstü yolunu dinamik olarak bulan fonksiyon
+void InitLogFile() {
+    char desktopPath[MAX_PATH];
+    // Meşru Windows API'si ile kullanıcının Desktop klasörünü çekiyoruz
+    if (SUCCEEDED(SHGetFolderPathA(NULL, CSIDL_DESKTOPDIRECTORY, NULL, 0, desktopPath))) {
+        g_LogFilePath = std::string(desktopPath) + "\\otopilot_veri_log.txt";
+        
+        // İlk açılışta eski dosya varsa temizleyip başlık atıyoruz
+        std::ofstream file(g_LogFilePath, std::ios::trunc);
+        if (file.is_open()) {
+            file << "=== SONOYUNCU OTOPILOT CANLI VERI LOG SISTEMI ===\n";
+            file << "Zaman tüneli ve yakalanan sınıflar aşağıda listelenmektedir.\n";
+            file << "================================================\n\n";
+            file.close();
+        }
+    }
+}
+
+// Dosyaya veri yazma fonksiyonu
+void LogToFile(const std::string& text) {
+    if (g_LogFilePath.empty()) return;
+    
+    std::ofstream file(g_LogFilePath, std::ios::app); // append modu: sonuna ekler
+    if (file.is_open()) {
+        file << text << "\n";
+        file.close();
+    }
+}
+
 void SetConsoleColor(WORD color) {
     SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), color);
 }
 
-// Canlı Takip Konsolunu Başlatma
 void InitConsole() {
     AllocConsole();
     FILE* f;
     freopen_s(&f, "CONOUT$", "w", stdout);
     freopen_s(&f, "CONIN$", "r", stdin);
-    SetConsoleTitleA("SonOyuncu Otopilot Deobfuscator & Memory Finder v3.0");
+    SetConsoleTitleA("SonOyuncu Canlı Otopilot Veri Tarayıcı v4.0");
     
-    SetConsoleColor(11); // Açık Mavi / Camgöbeği
+    SetConsoleColor(11);
     std::cout << "======================================================================" << std::endl;
-    std::cout << "[+] SONOYUNCU CANLI OTOPİLOT VERİ VE DURUM TARAYICI AKTİF" << std::endl;
+    std::cout << "[+] CANLI VERI TARAYICI AKTIF - VERILER MASAUUSTUNE KAYDEDILIYOR" << std::endl;
     std::cout << "======================================================================" << std::endl;
-    SetConsoleColor(7); // Standart Beyaz
+    SetConsoleColor(7);
 }
 
-// Her sınıf JVM'e yüklenirken tetiklenen Kanca (Hook) Fonksiyonu
+// JVM Sınıf Yükleme Kancası
 void JNICALL UltraClassHook(
     jvmtiEnv *jvmti_env,
     JNIEnv* jni_env,
@@ -42,68 +73,64 @@ void JNICALL UltraClassHook(
     if (name != nullptr) {
         std::string c_name(name);
         
-        // Sadece şüpheli kısa/karartılmış paketleri filtrele (Performans kaybını önlemek için)
         if (c_name.length() <= 12 || c_name.find("/") == std::string::npos) {
             
             // 1. KOORDİNAT KONTROLÜ
             if (PatternScanner::ScanClassBytecode(class_data, class_data_len, Signatures::Position)) {
-                SetConsoleColor(10); // Yeşil
-                std::cout << "[BULUNDU - KOORDİNAT] -> Sınıf: " << c_name << " (Otopilot konum verisi)" << std::endl;
+                SetConsoleColor(10);
+                std::cout << "[BULUNDU - KOORDİNAT] -> Sınıf: " << c_name << std::endl;
+                LogToFile("[KOORDİNAT] Eşleşen Sınıf: " + c_name);
             }
 
-            // 2. HIZ / VELOCITY KONTROLÜ
+            // 2. HIZ / IVME KONTROLÜ
             if (PatternScanner::ScanClassBytecode(class_data, class_data_len, Signatures::Velocity)) {
-                SetConsoleColor(14); // Sarı
-                std::cout << "[BULUNDU - HIZ/VELOCITY] -> Sınıf: " << c_name << " (İvme/Hareket verisi)" << std::endl;
+                SetConsoleColor(14);
+                std::cout << "[BULUNDU - HIZ/VELOCITY] -> Sınıf: " << c_name << std::endl;
+                LogToFile("[HIZ/VELOCITY] Eşleşen Sınıf: " + c_name);
             }
 
             // 3. YERDE TEMAS KONTROLÜ (ONGROUND)
             if (PatternScanner::ScanClassBytecode(class_data, class_data_len, Signatures::OnGround)) {
-                SetConsoleColor(13); // Pembe
-                std::cout << "[BULUNDU - ONGROUND] -> Sınıf: " << c_name << " (Düşme/Zıplama kontrolü)" << std::endl;
+                SetConsoleColor(13);
+                std::cout << "[BULUNDU - ONGROUND] -> Sınıf: " << c_name << std::endl;
+                LogToFile("[ONGROUND] Eşleşen Sınıf: " + c_name);
             }
 
             // 4. CAN VE AÇLIK DURUMU KONTROLÜ
             if (PatternScanner::ScanClassBytecode(class_data, class_data_len, Signatures::Status)) {
-                SetConsoleColor(12); // Kırmızı
-                std::cout << "[BULUNDU - CAN/AÇLIK] -> Sınıf: " << c_name << " (Sağlık/Yemek durumu)" << std::endl;
+                SetConsoleColor(12);
+                std::cout << "[BULUNDU - CAN/AÇLIK] -> Sınıf: " << c_name << std::endl;
+                LogToFile("[CAN_ACLIK] Eşleşen Sınıf: " + c_name);
             }
-
-            // Sabit havuzundaki çözülebilen gizli metinleri gri renkte bas
-            SetConsoleColor(8); // Gri
-            Deobfuscator::AnalyzeConstantPool(class_data, class_data_len);
-            SetConsoleColor(7); // Rengi normale döndür
         }
     }
 }
 
-// DLL Enjektörün ile Oyuna Gönderildiğinde Çalışacak Giriş Noktası (Native Agent)
+// DLL Giriş Noktası
 extern "C" JNIEXPORT jint JNICALL Agent_OnAttach(JavaVM *vm, char *options, void *reserved) {
     InitConsole();
+    InitLogFile(); // Masaüstü kayıt sistemini başlat
     
     jvmtiEnv *jvmti;
     if (vm->GetEnv((void**)&jvmti, JVMTI_VERSION_1_0) != JNI_OK) {
         return JNI_ERR;
     }
 
-    // JVM Sınıf yakalama yeteneklerini aktif et
     jvmtiCapabilities caps = { 0 };
     caps.can_generate_all_class_hook_events = 1;
     jvmti->AddCapabilities(&caps);
 
-    // Fonksiyonu JVM olaylarına bağla
     jvmtiEventCallbacks callbacks = { 0 };
     callbacks.ClassFileLoadHook = &UltraClassHook;
     jvmti->SetEventCallbacks(&callbacks, sizeof(callbacks));
 
-    // Bildirim modunu aç
     jvmti->SetEventNotificationMode(JVMTI_ENABLE, JVMTI_EVENT_CLASS_FILE_LOAD_HOOK, NULL);
     
     return JNI_OK;
 }
 
-// Standart Windows DllMain girişi
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
     return TRUE;
 }
+
 
